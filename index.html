@@ -2,12 +2,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Метро Москвы — карта по интересам</title>
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-  crossorigin=""
-/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
 <style>
   :root {
@@ -163,14 +158,20 @@
   </div>
 </div>
 
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJ2G9c8Ow9cJz/OS+3AgQ9UZTA+xw="
-  crossorigin=""
-></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 "use strict";
+
+// Проверка, что библиотека карты загрузилась (иначе — понятная ошибка вместо зависания)
+if (typeof L === "undefined") {
+  const s = document.getElementById("status");
+  s.className = "status err";
+  s.innerHTML =
+    "<b>Не загрузилась библиотека карты (Leaflet).</b><br>" +
+    "Нет доступа к unpkg.com — проверь интернет/VPN и обнови страницу.";
+  throw new Error("Leaflet failed to load");
+}
 
 // ---------- Конфигурация ----------
 const MOSCOW_CENTER = [55.751, 37.618];
@@ -232,17 +233,23 @@ function setStatus(html, isErr) {
 async function overpass(query) {
   let lastErr;
   for (const url of OVERPASS_ENDPOINTS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45000); // не даём запросу висеть вечно
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "data=" + encodeURIComponent(query),
+        signal: ctrl.signal,
       });
+      clearTimeout(timer);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const json = await res.json();
       return json.elements || [];
     } catch (e) {
+      clearTimeout(timer);
       lastErr = e;
+      console.warn("Overpass endpoint failed:", url, e.message);
     }
   }
   throw lastErr || new Error("Overpass недоступен");
@@ -495,7 +502,14 @@ $("#reset").addEventListener("click", resetAll);
 // ---------- Старт ----------
 buildChips();
 loadStations().catch((e) => {
-  setStatus("<b>Не удалось загрузить станции.</b> Проверь интернет и обнови страницу.", true);
+  const local = location.protocol === "file:";
+  setStatus(
+    "<b>Не удалось загрузить станции метро.</b><br>" +
+      (local
+        ? "Похоже, файл открыт через file:// — браузер может блокировать запросы. Запусти локальный сервер: <code>python3 -m http.server</code> и открой http://localhost:8000"
+        : "Сервис OpenStreetMap (Overpass) не ответил. Обнови страницу или попробуй позже."),
+    true
+  );
   console.error(e);
 });
 </script>
