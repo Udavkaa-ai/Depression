@@ -1,0 +1,501 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Метро Москвы — карта по интересам</title>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+
+<style>
+  :root {
+    --bg: #14161c;
+    --panel: #1c1f28;
+    --panel-2: #242836;
+    --line: #333949;
+    --text: #e8ebf2;
+    --muted: #9aa2b6;
+    --accent: #ec4278;
+    --match: #35d07f;
+    --match-dim: #35d07f33;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* Header */
+  header {
+    padding: 10px 14px 8px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 500;
+  }
+  .titlebar { display: flex; align-items: center; gap: 10px; }
+  .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--accent); color: #fff; font-weight: 800;
+    display: grid; place-items: center; font-size: 18px; flex: none;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 700; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+  /* Category chips */
+  .chips {
+    display: flex; gap: 8px; overflow-x: auto; padding: 10px 2px 2px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; cursor: pointer; user-select: none;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); border-radius: 999px;
+    padding: 7px 13px; font-size: 13px; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px; transition: .15s;
+  }
+  .chip:hover { border-color: #4a5268; }
+  .chip.active {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  .chip .em { font-size: 15px; }
+
+  /* Controls row */
+  .controls {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 2px 2px; font-size: 13px; color: var(--muted);
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; }
+  input[type="range"] { accent-color: var(--accent); width: 130px; }
+  .radval { color: var(--text); font-weight: 600; min-width: 52px; }
+  .btn {
+    cursor: pointer; border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); border-radius: 8px; padding: 6px 12px; font-size: 13px;
+  }
+  .btn:hover { border-color: #4a5268; }
+  .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  /* Map + panel */
+  .stage { flex: 1; position: relative; min-height: 0; }
+  #map { position: absolute; inset: 0; background: #0d0f14; }
+
+  .status {
+    position: absolute; top: 10px; left: 10px; z-index: 600;
+    background: rgba(20,22,28,.92); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 12px; font-size: 13px; max-width: 70%;
+    backdrop-filter: blur(6px);
+  }
+  .status b { color: var(--match); }
+  .status.err b { color: #ff6b6b; }
+  .spinner {
+    display: inline-block; width: 13px; height: 13px; vertical-align: -2px;
+    border: 2px solid var(--muted); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results panel */
+  #panel {
+    position: absolute; top: 10px; right: 10px; bottom: 10px; z-index: 600;
+    width: 260px; max-width: 46%;
+    background: rgba(20,22,28,.94); border: 1px solid var(--line);
+    border-radius: 12px; display: none; flex-direction: column;
+    backdrop-filter: blur(6px); overflow: hidden;
+  }
+  #panel.show { display: flex; }
+  #panel h2 { font-size: 13px; margin: 0; padding: 12px 14px 8px; color: var(--muted); font-weight: 600; }
+  #panelList { overflow-y: auto; padding: 0 6px 8px; }
+  .row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .row:hover { background: var(--panel-2); }
+  .row .cnt {
+    background: var(--match-dim); color: var(--match);
+    border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; flex: none;
+  }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel-2); color: var(--text); }
+  .leaflet-popup-content { font-size: 13px; }
+  .leaflet-popup-content b { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    #panel { width: 200px; }
+    h1 { font-size: 15px; }
+  }
+</style>
+
+<header>
+  <div class="titlebar">
+    <div class="logo">М</div>
+    <div>
+      <h1>Метро Москвы — поиск по интересам</h1>
+      <div class="sub">Выбери категорию — останутся станции, рядом с которыми есть нужные места</div>
+    </div>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="controls">
+    <label>
+      Радиус
+      <input type="range" id="radius" min="300" max="2000" step="100" value="1000" />
+      <span class="radval" id="radval">1000 м</span>
+    </label>
+    <label class="toggle"><input type="checkbox" id="showPois" /> Показывать места</label>
+    <button class="btn" id="reset">Сбросить</button>
+  </div>
+</header>
+
+<div class="stage">
+  <div id="map"></div>
+  <div class="status" id="status">Загружаю станции метро…</div>
+  <div id="panel">
+    <h2 id="panelTitle">Станции</h2>
+    <div id="panelList"></div>
+  </div>
+</div>
+
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJ2G9c8Ow9cJz/OS+3AgQ9UZTA+xw="
+  crossorigin=""
+></script>
+
+<script>
+"use strict";
+
+// ---------- Конфигурация ----------
+const MOSCOW_CENTER = [55.751, 37.618];
+// bbox: юг, запад, север, восток (охватывает Москву + ближайшую Новую Москву)
+const BBOX = [55.30, 37.25, 56.05, 37.95];
+const BBOX_STR = BBOX.join(",");
+
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+
+// Категории. filters — готовые OSM-селекторы тегов.
+const CATEGORIES = [
+  { id: "cafe",     em: "☕", label: "Кафе",            filters: ['["amenity"="cafe"]'] },
+  { id: "rest",     em: "🍽", label: "Рестораны",       filters: ['["amenity"="restaurant"]'] },
+  { id: "fast",     em: "🍔", label: "Фастфуд",         filters: ['["amenity"="fast_food"]'] },
+  { id: "bar",      em: "🍺", label: "Бары",            filters: ['["amenity"~"^(bar|pub)$"]'] },
+  { id: "mall",     em: "🛍", label: "Торговые центры", filters: ['["shop"="mall"]', '["shop"="department_store"]'] },
+  { id: "fun",      em: "🎭", label: "Развлечения",     filters: ['["amenity"~"^(cinema|theatre|nightclub|arts_centre)$"]'] },
+  { id: "sport",    em: "🏋", label: "Спорт",           filters: ['["leisure"~"^(fitness_centre|sports_centre|stadium|swimming_pool|pitch)$"]', '["amenity"="gym"]'] },
+  { id: "park",     em: "🌳", label: "Парки",           filters: ['["leisure"="park"]'] },
+  { id: "museum",   em: "🏛", label: "Музеи",           filters: ['["tourism"="museum"]'] },
+  { id: "shop",     em: "🛒", label: "Супермаркеты",    filters: ['["shop"="supermarket"]'] },
+  { id: "pharm",    em: "💊", label: "Аптеки",          filters: ['["amenity"="pharmacy"]'] },
+];
+
+// ---------- Карта ----------
+const map = L.map("map", { zoomControl: true, preferCanvas: true }).setView(MOSCOW_CENTER, 11);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; OpenStreetMap, &copy; CARTO',
+  maxZoom: 19,
+}).addTo(map);
+
+const poiRenderer = L.canvas({ padding: 0.5 });
+const poiLayer = L.layerGroup();      // точки мест
+const stationLayer = L.layerGroup().addTo(map);
+let radiusCircle = null;              // круг вокруг выбранной станции
+
+// ---------- Состояние ----------
+let STATIONS = [];        // {id, name, lat, lon, marker}
+let activeCat = null;
+let radius = 1000;
+let showPois = false;
+
+const $ = (s) => document.querySelector(s);
+const statusEl = $("#status");
+const panelEl = $("#panel");
+const panelList = $("#panelList");
+const panelTitle = $("#panelTitle");
+
+function setStatus(html, isErr) {
+  statusEl.className = "status" + (isErr ? " err" : "");
+  statusEl.innerHTML = html;
+}
+
+// ---------- Overpass ----------
+async function overpass(query) {
+  let lastErr;
+  for (const url of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const json = await res.json();
+      return json.elements || [];
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("Overpass недоступен");
+}
+
+function elCoord(el) {
+  if (el.lat != null) return [el.lat, el.lon];
+  if (el.center) return [el.center.lat, el.center.lon];
+  return null;
+}
+
+// ---------- Станции ----------
+const STATIONS_CACHE_KEY = "msk_metro_stations_v1";
+
+async function loadStations() {
+  // из кэша
+  try {
+    const cached = JSON.parse(localStorage.getItem(STATIONS_CACHE_KEY) || "null");
+    if (cached && Date.now() - cached.ts < 30 * 864e5 && cached.data.length > 100) {
+      STATIONS = cached.data;
+      drawStations();
+      setStatus("Станций метро: <b>" + STATIONS.length + "</b>. Выбери категорию сверху.");
+      return;
+    }
+  } catch (_) {}
+
+  const q = `[out:json][timeout:60];
+    ( node["railway"="station"]["station"="subway"](${BBOX_STR});
+      node["station"="subway"](${BBOX_STR}); );
+    out body;`;
+  const els = await overpass(q);
+
+  const seen = new Set();
+  STATIONS = [];
+  for (const el of els) {
+    const c = elCoord(el);
+    if (!c) continue;
+    const name = (el.tags && (el.tags.name || el.tags["name:ru"])) || "Станция";
+    const key = name + "|" + c[0].toFixed(3) + "|" + c[1].toFixed(3);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    STATIONS.push({ id: el.id, name, lat: c[0], lon: c[1] });
+  }
+
+  try {
+    localStorage.setItem(STATIONS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: STATIONS }));
+  } catch (_) {}
+
+  drawStations();
+  setStatus("Станций метро: <b>" + STATIONS.length + "</b>. Выбери категорию сверху.");
+}
+
+function drawStations() {
+  stationLayer.clearLayers();
+  for (const s of STATIONS) {
+    s.marker = L.circleMarker([s.lat, s.lon], stationStyle(s, "idle"))
+      .addTo(stationLayer)
+      .on("click", () => onStationClick(s));
+    s.marker.bindTooltip(s.name, { direction: "top", offset: [0, -4] });
+  }
+}
+
+function stationStyle(s, state) {
+  if (state === "match")
+    return { radius: 7, color: "#0e2c1c", weight: 2, fillColor: "#35d07f", fillOpacity: 1 };
+  if (state === "dim")
+    return { radius: 3, color: "#3a3f4d", weight: 1, fillColor: "#3a3f4d", fillOpacity: .5 };
+  // idle
+  return { radius: 5, color: "#12203a", weight: 2, fillColor: "#4ea1ff", fillOpacity: .95 };
+}
+
+function onStationClick(s) {
+  if (radiusCircle) map.removeLayer(radiusCircle);
+  radiusCircle = L.circle([s.lat, s.lon], {
+    radius, color: "#ec4278", weight: 1, fillColor: "#ec4278", fillOpacity: .07,
+  }).addTo(map);
+  const cnt = s.count != null ? s.count : null;
+  let html = "<b>" + s.name + "</b>";
+  if (activeCat && cnt != null) {
+    const cat = CATEGORIES.find((c) => c.id === activeCat);
+    html += "<br>" + cnt + " · " + cat.label.toLowerCase() + " в радиусе " + radius + " м";
+  }
+  s.marker.bindPopup(html).openPopup();
+}
+
+// ---------- Пространственный индекс ----------
+function buildGrid(points, cellMeters) {
+  const dLat = cellMeters / 111320;
+  const dLon = cellMeters / (111320 * Math.cos((MOSCOW_CENTER[0] * Math.PI) / 180));
+  const grid = new Map();
+  for (const p of points) {
+    const gx = Math.floor(p[0] / dLat);
+    const gy = Math.floor(p[1] / dLon);
+    const key = gx + ":" + gy;
+    let arr = grid.get(key);
+    if (!arr) grid.set(key, (arr = []));
+    arr.push(p);
+  }
+  return { grid, dLat, dLon };
+}
+
+function haversine(aLat, aLon, bLat, bLon) {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLon = ((bLon - aLon) * Math.PI) / 180;
+  const la1 = (aLat * Math.PI) / 180, la2 = (bLat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function countNear(station, gridObj) {
+  const { grid, dLat, dLon } = gridObj;
+  const gx = Math.floor(station.lat / dLat);
+  const gy = Math.floor(station.lon / dLon);
+  let cnt = 0;
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++) {
+      const arr = grid.get((gx + i) + ":" + (gy + j));
+      if (!arr) continue;
+      for (const p of arr)
+        if (haversine(station.lat, station.lon, p[0], p[1]) <= radius) cnt++;
+    }
+  return cnt;
+}
+
+// ---------- Выбор категории ----------
+async function selectCategory(cat) {
+  activeCat = cat.id;
+  radius = +$("#radius").value;
+  document.querySelectorAll(".chip").forEach((c) =>
+    c.classList.toggle("active", c.dataset.id === cat.id));
+  setStatus('<span class="spinner"></span>Ищу «' + cat.label.toLowerCase() + '» по Москве…');
+
+  let els;
+  try {
+    const body = cat.filters
+      .flatMap((f) => [`node${f}(${BBOX_STR});`, `way${f}(${BBOX_STR});`])
+      .join("\n");
+    const q = `[out:json][timeout:90];(\n${body}\n);out center;`;
+    els = await overpass(q);
+  } catch (e) {
+    setStatus("<b>Ошибка загрузки.</b> Overpass не ответил — попробуй ещё раз.", true);
+    return;
+  }
+
+  const points = [];
+  for (const el of els) {
+    const c = elCoord(el);
+    if (c) points.push(c);
+  }
+
+  // индекс с размером ячейки = радиус (проверяем 3×3 соседних ячейки)
+  const gridObj = buildGrid(points, radius);
+
+  let matched = 0;
+  for (const s of STATIONS) {
+    s.count = countNear(s, gridObj);
+    const state = s.count > 0 ? "match" : "dim";
+    if (s.count > 0) matched++;
+    s.marker.setStyle(stationStyle(s, state));
+    s.marker.setRadius(stationStyle(s, state).radius);
+  }
+
+  drawPois(points);
+  setStatus(
+    "«" + cat.em + " " + cat.label + "» · станций с местами в радиусе " + radius +
+    " м: <b>" + matched + "</b> из " + STATIONS.length +
+    "<br><span style='color:var(--muted)'>всего мест на карте: " + points.length + "</span>"
+  );
+  renderPanel(cat);
+}
+
+function drawPois(points) {
+  poiLayer.clearLayers();
+  if (!showPois) { map.removeLayer(poiLayer); return; }
+  const cap = 6000;
+  const step = Math.max(1, Math.ceil(points.length / cap));
+  for (let i = 0; i < points.length; i += step) {
+    L.circleMarker(points[i], {
+      renderer: poiRenderer, radius: 2.5,
+      color: "#ec4278", weight: 0, fillColor: "#ec4278", fillOpacity: .55,
+    }).addTo(poiLayer);
+  }
+  poiLayer.addTo(map);
+  poiLayer.bringToBack();
+}
+
+function renderPanel(cat) {
+  const matched = STATIONS.filter((s) => s.count > 0).sort((a, b) => b.count - a.count);
+  panelTitle.textContent = cat.em + " " + cat.label + " · " + matched.length + " станций";
+  panelList.innerHTML = "";
+  for (const s of matched) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span>' + s.name + '</span><span class="cnt">' + s.count + "</span>";
+    row.onclick = () => { map.setView([s.lat, s.lon], 14); onStationClick(s); };
+    panelList.appendChild(row);
+  }
+  panelEl.classList.add("show");
+}
+
+function resetAll() {
+  activeCat = null;
+  document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+  poiLayer.clearLayers();
+  map.removeLayer(poiLayer);
+  if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+  for (const s of STATIONS) {
+    s.count = null;
+    s.marker.setStyle(stationStyle(s, "idle"));
+    s.marker.setRadius(stationStyle(s, "idle").radius);
+  }
+  panelEl.classList.remove("show");
+  setStatus("Станций метро: <b>" + STATIONS.length + "</b>. Выбери категорию сверху.");
+}
+
+// ---------- UI ----------
+function buildChips() {
+  const box = $("#chips");
+  for (const cat of CATEGORIES) {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.dataset.id = cat.id;
+    chip.innerHTML = '<span class="em">' + cat.em + "</span>" + cat.label;
+    chip.onclick = () => {
+      if (activeCat === cat.id) { resetAll(); return; }
+      selectCategory(cat);
+    };
+    box.appendChild(chip);
+  }
+}
+
+$("#radius").addEventListener("input", (e) => {
+  radius = +e.target.value;
+  $("#radval").textContent = radius + " м";
+});
+$("#radius").addEventListener("change", () => {
+  if (activeCat) selectCategory(CATEGORIES.find((c) => c.id === activeCat));
+});
+$("#showPois").addEventListener("change", (e) => {
+  showPois = e.target.checked;
+  if (activeCat) {
+    // перерисовать точки на текущей выборке
+    const cat = CATEGORIES.find((c) => c.id === activeCat);
+    selectCategory(cat);
+  }
+});
+$("#reset").addEventListener("click", resetAll);
+
+// ---------- Старт ----------
+buildChips();
+loadStations().catch((e) => {
+  setStatus("<b>Не удалось загрузить станции.</b> Проверь интернет и обнови страницу.", true);
+  console.error(e);
+});
+</script>
